@@ -403,9 +403,9 @@ def setup_standalone_cluster(master, slave_nodes, opts):
     # setup_spark(node, opts)
     ssh(node, opts, "echo SPARK_MASTER_IP={0} >> /home/ubuntu/bin/spark/conf/spark-env.sh".format(master))
 
-  setup_machine(master, opts)
-  setup_scala(master, opts)
-  setup_spark(master, opts)
+  #setup_machine(master, opts)
+  #setup_scala(master, opts)
+  #setup_spark(master, opts)
 
   slave_ips = '\n'.join([i.public_dns_name for i in slave_nodes])
   ssh(master, opts, "echo \"%s\" > /home/ubuntu/bin/spark/conf/slaves" % (slave_ips))
