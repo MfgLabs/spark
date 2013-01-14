@@ -421,7 +421,7 @@ def setup_standalone_cluster(master, slave_nodes, opts):
   setup_spark(master, opts)
 
   print "updating master with slave information"
-  slave_ips = '\n'.join([i.public_dns_name for i in slave_nodes])
+  slave_ips = "localhost\n" + '\n'.join([i.public_dns_name for i in slave_nodes])
   ssh(master, opts, "echo \"%s\" > /home/ubuntu/bin/spark/conf/slaves" % (slave_ips))
 
   print "now doing the slaves"
