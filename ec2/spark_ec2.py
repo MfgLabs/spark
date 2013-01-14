@@ -88,6 +88,8 @@ def parse_args():
       help="The ssh user you want to connect as (default: root)")
   parser.add_option("--delete-groups", action="store_true", default=False,
       help="When destroying a cluster, also destroy the security groups that were created")
+  parser.add_option("--environment", default="",
+      help="Provide a script to do environment variable")
 
   (opts, args) = parser.parse_args()
   if len(args) != 2:
@@ -361,7 +363,10 @@ def get_existing_cluster(conn, opts, cluster_name, die_on_error=True):
 # or started EC2 cluster.
 def setup_cluster(conn, master_nodes, slave_nodes, zoo_nodes, opts, deploy_ssh_key):
   print "Deploying files to master..."
-  deploy_files(conn, "/home/ubuntu", opts, master_nodes, slave_nodes, zoo_nodes)
+
+  print "opts.identity_file: " + opts.identity_file
+
+  #deploy_files(conn, "/home/ubuntu", opts, master_nodes, slave_nodes, zoo_nodes)
   #deploy_files(conn, "deploy.generic", opts, master_nodes, slave_nodes, zoo_nodes)
   master = master_nodes[0].public_dns_name
   if deploy_ssh_key:
@@ -376,39 +381,61 @@ def setup_cluster(conn, master_nodes, slave_nodes, zoo_nodes, opts, deploy_ssh_k
     print "Running setup standalone on master..."
     setup_standalone_cluster(master, slave_nodes, opts)
   print "Done!"
+  print "master running @ " + master
 
 def setup_mesos_cluster(master, opts):
   ssh(master, opts, "chmod u+x mesos-ec2/setup")
-  ssh(master, opts, "mesos-ec2/setup %s %s %s %s" %
-      ("generic", "none", "master", opts.swap))
+  ssh(master, opts, "mesos-ec2/setup %s %s %s %s" % ("generic", "none", "master", opts.swap))
 
+# todo - maybe export this just to a .sh file
 
 def setup_scala(node, opts):
   ssh(node, opts, "cd /home/ubuntu/bin; wget http://www.scala-lang.org/downloads/distrib/files/scala-2.9.2.tgz; tar -xvf scala-2.9.2.tgz; mv scala-2.9.2 scala")
 
 def setup_machine(node, opts):
+  if(opts.environment != ""):
+    scp(node, opts, opts.environment, "/home/ubuntu/environment.sh")
+    ssh(node, opts, "sh /home/ubuntu/environment.sh")
+
   ssh(node, opts, "sudo apt-get update; sudo apt-get install git -y; sudo apt-get install openjdk-7-jre -y; sudo apt-get install openjdk-7-jdk -y")
   ssh(node, opts, "rm -rf /home/ubuntu/bin;mkdir /home/ubuntu/bin; sudo mkdir /mnt/spark_tmp; sudo chmod 777 /mnt/spark_tmp")
+  # maybe sbt?
 
 def setup_spark(node, opts):
   ssh(node, opts, "git clone https://github.com/MfgLabs/spark.git /home/ubuntu/bin/spark")
-  ssh(node, opts, "/home/ubuntu/bin/spark/sbt/sbt publish-local")
+  ssh(node, opts, "cd /home/ubuntu/bin/spark; sbt/sbt publish-local")
+
+def copy_from_master(master, node, opts):
+  ssh(master, opts, "scp -q -o StrictHostKeyChecking=no -r /home/ubuntu/bin ubuntu@{0}:/home/ubuntu".format(node))
 
 def setup_standalone_cluster(master, slave_nodes, opts):
 
+  # setup all machines, i.e. install java etc
+  setup_machine(master, opts)
   for i in slave_nodes:
     node = i.public_dns_name
-    # setup_machine(node, opts)
-    # setup_scala(node, opts)
-    # setup_spark(node, opts)
-    ssh(node, opts, "echo SPARK_MASTER_IP={0} >> /home/ubuntu/bin/spark/conf/spark-env.sh".format(master))
+    setup_machine(node, opts)
 
-  #setup_machine(master, opts)
-  #setup_scala(master, opts)
-  #setup_spark(master, opts)
+  # #install stuff on the master
+  setup_scala(master, opts)
+  setup_spark(master, opts)
 
+  #update master with slaves
   slave_ips = '\n'.join([i.public_dns_name for i in slave_nodes])
   ssh(master, opts, "echo \"%s\" > /home/ubuntu/bin/spark/conf/slaves" % (slave_ips))
+
+  # now do the slaves
+  for i in slave_nodes:
+    node = i.public_dns_name
+    print "setting up slave: " + node
+
+    # copy stuff from master to slaves - quicker than compiling it
+    copy_from_master(master, node, opts)
+
+    # add master to spark-env.sh
+    ssh(node, opts, "echo export SPARK_MASTER_IP={0} >> /home/ubuntu/bin/spark/conf/spark-env.sh".format(master))
+
+  # let's get the ball rolling!
   ssh(master, opts, "/home/ubuntu/bin/spark/bin/start-all.sh")
 
 # Wait for a whole cluster (masters, slaves and ZooKeeper) to start up
@@ -532,6 +559,8 @@ def ssh(host, opts, command):
       "ssh -t -o StrictHostKeyChecking=no -i %s %s@%s '%s'" %
       (opts.identity_file, opts.user, host, command), shell=True)
 
+def new_ssh(host, opts, command):
+  subprocess.check_call("ssh -t -o StrictHostKeyChecking=no %s@%s '%s'" %(opts.user, host, command), shell=True)
 
 # Gets a list of zones to launch instances in
 def get_zones(conn, opts):
