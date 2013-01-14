@@ -177,6 +177,8 @@ object HadoopWriter {
       throw new IllegalArgumentException("Incorrectly formatted output path")
     }
     outputPath = outputPath.makeQualified(fs)
+
+    println("outputPath: " + outputPath)
     return outputPath
   }
 }
