@@ -410,32 +410,32 @@ def copy_from_master(master, node, opts):
 
 def setup_standalone_cluster(master, slave_nodes, opts):
 
-  # setup all machines, i.e. install java etc
+  print "setting up all machines, i.e. install java etc"
   setup_machine(master, opts)
   for i in slave_nodes:
     node = i.public_dns_name
     setup_machine(node, opts)
 
-  # #install stuff on the master
+  print "installing stuff on the master"
   setup_scala(master, opts)
   setup_spark(master, opts)
 
-  #update master with slaves
+  print "updating master with slave information"
   slave_ips = '\n'.join([i.public_dns_name for i in slave_nodes])
   ssh(master, opts, "echo \"%s\" > /home/ubuntu/bin/spark/conf/slaves" % (slave_ips))
 
-  # now do the slaves
+  print "now doing the slaves"
   for i in slave_nodes:
     node = i.public_dns_name
     print "setting up slave: " + node
 
-    # copy stuff from master to slaves - quicker than compiling it
+    print "copy stuff from master to slaves - quicker than compiling it"
     copy_from_master(master, node, opts)
 
-    # add master to spark-env.sh
+    print "add master to spark-env.sh"
     ssh(node, opts, "echo export SPARK_MASTER_IP={0} >> /home/ubuntu/bin/spark/conf/spark-env.sh".format(master))
 
-  # let's get the ball rolling!
+  print "let's get the ball rolling!"
   ssh(master, opts, "/home/ubuntu/bin/spark/bin/start-all.sh")
 
 # Wait for a whole cluster (masters, slaves and ZooKeeper) to start up
